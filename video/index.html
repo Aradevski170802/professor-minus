@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мисия: Намери Х — видеоурок</title>
+<meta name="description" content="Анимиран видеоурок с говорител за 6. клас: как се намира неизвестно число, задачи с думи и задачи за движение.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Unbounded:wght@500;700;900&family=Caveat:wght@600;700&display=swap">
+<link rel="stylesheet" href="video.css">
+</head>
+<body>
+<div id="player" class="idle">
+  <div id="screen">
+    <div id="stage">
+      <canvas id="bg" width="960" height="540" aria-hidden="true"></canvas>
+      <div id="layer"></div>
+      <div id="botWrap" aria-hidden="true"></div>
+      <canvas id="confetti" width="1920" height="1080" aria-hidden="true"></canvas>
+      <div id="sub" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div id="startOv">
+    <div class="startCard">
+      <div class="kicker">Видеоурок · 6. клас</div>
+      <h1>Мисия: <span>Намери Х</span></h1>
+      <p class="lead">Детектив Бит ще ви покаже как се намира неизвестното число, как се превеждат задачи с думи и как се решават задачи за движение.</p>
+      <button id="btnStart" type="button"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>Пусни видеото</span></button>
+      <div id="voiceNote" class="vnote"></div>
+      <ol id="startChapters" class="chlist"></ol>
+    </div>
+  </div>
+
+  <div id="endOv" hidden>
+    <div class="startCard">
+      <div class="kicker">Мисията е изпълнена</div>
+      <h1>Браво, <span>детективи!</span></h1>
+      <p class="lead">Сега е ваш ред — хванете всеки Х в учебника. А за истинско предизвикателство…</p>
+      <div class="endBtns">
+        <a class="bigLink" href="../">Ескейп стаята на Професор Минус →</a>
+        <button id="btnReplay" type="button" class="ghost">↺ Гледай пак</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ctrl">
+    <div id="bar" role="slider" aria-label="Напредък" tabindex="0"><div id="barSegs"></div><div id="barTip"></div></div>
+    <div class="row">
+      <button id="bPlay" title="Пусни / пауза (интервал)" aria-label="Пусни или пауза"><svg viewBox="0 0 24 24"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+      <button id="bPrev" title="Предишна стъпка (←)" aria-label="Предишна стъпка"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12 18 18V6z"/></svg></button>
+      <button id="bNext" title="Следваща стъпка (→)" aria-label="Следваща стъпка"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+      <span id="time">0:00 / 0:00</span>
+      <span id="chName"></span>
+      <span class="sp"></span>
+      <button id="bCh" title="Глави" aria-label="Глави"><svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg></button>
+      <button id="bCC" class="on" title="Субтитри (C)" aria-label="Субтитри"><svg viewBox="0 0 24 24"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm2.5 5.5v3c0 .8.7 1.5 1.5 1.5h2v-1.5H8v-3h2V9H8c-.8 0-1.5.7-1.5 1.5zm6 0v3c0 .8.7 1.5 1.5 1.5h2v-1.5h-2v-3h2V9h-2c-.8 0-1.5.7-1.5 1.5z"/></svg></button>
+      <button id="bMusic" class="on" title="Музика (M)" aria-label="Музика"><svg viewBox="0 0 24 24"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3z"/></svg></button>
+      <button id="bSet" title="Глас и скорост" aria-label="Настройки"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></button>
+      <button id="bFull" title="На цял екран (F)" aria-label="На цял екран"><svg viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z"/></svg></button>
+    </div>
+    <div id="chMenu" class="pop" hidden></div>
+    <div id="setMenu" class="pop" hidden>
+      <label>Говорител<select id="selVoice"></select></label>
+      <label>Скорост<select id="selRate"><option value="0.85">По-бавно</option><option value="1" selected>Нормално</option><option value="1.15">По-бързо</option></select></label>
+      <p class="vhint">Най-хубав глас има в <b>Microsoft Edge</b> (Kalina или Borislav).</p>
+    </div>
+  </div>
+</div>
+<script src="engine.js"></script>
+<script src="art.js"></script>
+<script src="scenes.js"></script>
+</body>
+</html>
