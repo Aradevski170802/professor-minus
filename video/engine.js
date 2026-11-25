@@ -446,27 +446,52 @@ const V = (() => {
   let voices = [];
   const keep = [];
   const shown = s => s.replace(/\[\[(.*?)\|\|(.*?)\]\]/g, '$1');
-  const spoken = s => s.replace(/\[\[(.*?)\|\|(.*?)\]\]/g, '$2').replace(/[—–]/g, ',');
-  const est = s => (spoken(s).split(/\s+/).length * 400 + 450) / st.rate;
+  const spoken = s => s.replace(/\[\[(.*?)\|\|(.*?)\]\]/g, '$2').replace(/\s*[—–]\s*/g, ', ');
+  /* записан глас: audio/<хеш>.mp3 за всяко изречение + audio/index.json с продължителностите */
+  const hash = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+  const REC = { map: {}, ok: false };
+  const AUD = new Audio(); AUD.preload = 'auto';
+  const SILENT = (() => { const n = 400, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0))); w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true); return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); })();
+  const useRec = () => st.mode === 'rec' && REC.ok;
+  const recDur = s => REC.map[hash(spoken(s))];
+  const est = s => { const r = useRec() && recDur(s); return r ? (r * 1000 + 170) / st.rate : (spoken(s).split(/\s+/).length * 400 + 450) / st.rate; };
+  const pre = new Set();
+  const prefetch = list => { if (!REC.ok) return; for (const s of list) { const h = hash(spoken(s)); if (REC.map[h] && !pre.has(h)) { pre.add(h); fetch('audio/' + h + '.mp3').catch(() => {}); } } };
   const split = t => !t ? [] : Array.isArray(t) ? t : t.match(/[^.!?…]+[.!?…]+["“”»]?|[^.!?…]+$/g).map(s => s.trim()).filter(Boolean);
   const sub = $('#sub');
   const showSub = s => { sub.textContent = s ? shown(s) : ''; };
   function rankVoice(v) { return (/natural|online|neural/i.test(v.name) ? 10 : 0) + (/borislav/i.test(v.name) ? 3 : 0) + (/kalina/i.test(v.name) ? 2 : 0) + (v.localService ? 0 : 1); }
+  const vname = v => v.name.replace(/^Microsoft /, '').replace(/ - .*$/, '');
   function loadVoices() {
-    if (!synth) return;
-    voices = synth.getVoices().filter(v => /^bg/i.test(v.lang) || /bulgar/i.test(v.name)).sort((a, b) => rankVoice(b) - rankVoice(a));
-    const saved = localStorage.getItem('missionx-voice');
-    if (!st.voiceSet) st.voice = voices.find(v => v.name === saved) || voices[0] || null;
-    if (saved === 'none' && !st.voiceSet) st.voice = null;
+    voices = synth ? synth.getVoices().filter(v => /^bg/i.test(v.lang) || /bulgar/i.test(v.name)).sort((a, b) => rankVoice(b) - rankVoice(a)) : [];
+    const saved = localStorage.getItem('missionx-voice2');
+    if (!st.voiceSet) {
+      const sv = voices.find(v => v.name === saved);
+      if (saved === 'none') { st.mode = 'none'; st.voice = null; }
+      else if (sv) { st.mode = 'tts'; st.voice = sv; }
+      else if (REC.ok) { st.mode = 'rec'; st.voice = null; }
+      else if (voices[0]) { st.mode = 'tts'; st.voice = voices[0]; }
+      else { st.mode = 'none'; st.voice = null; }
+    }
     const sel = $('#selVoice');
-    sel.innerHTML = voices.map(v => `<option value="${v.name}">${v.name.replace(/^Microsoft /, '').replace(/ - .*$/, '')}</option>`).join('') + '<option value="none">Без глас (само субтитри)</option>';
-    sel.value = st.voice ? st.voice.name : 'none';
+    sel.innerHTML = (REC.ok ? '<option value="rec">Бит (записан глас)</option>' : '') + voices.map(v => `<option value="${v.name}">${vname(v)} (глас на браузъра)</option>`).join('') + '<option value="none">Без глас (само субтитри)</option>';
+    sel.value = st.mode === 'rec' ? 'rec' : st.voice ? st.voice.name : 'none';
     const n = $('#voiceNote');
-    if (voices.length) { n.className = 'vnote'; n.innerHTML = `Говорител: <b>${voices[0].name.replace(/^Microsoft /, '').replace(/ - .*$/, '')}</b> 🔊 Пуснете звука.`; }
+    if (REC.ok) { n.className = 'vnote'; n.innerHTML = 'Говорител: <b>Детектив Бит</b> 🔊 Пуснете звука.'; }
+    else if (voices.length) { n.className = 'vnote'; n.innerHTML = `Говорител: <b>${vname(voices[0])}</b> 🔊 Пуснете звука.`; }
     else { n.className = 'vnote warn'; n.innerHTML = 'В този браузър няма български глас, затова видеото ще върви със субтитри. За говорител отворете страницата в <b>Microsoft Edge</b> (или в Chrome на телефон с Android).'; }
   }
-  if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; setTimeout(loadVoices, 600); setTimeout(loadVoices, 2000); }
-  $('#selVoice').onchange = e => { st.voiceSet = true; st.voice = voices.find(v => v.name === e.target.value) || null; localStorage.setItem('missionx-voice', e.target.value); if (st.playing) playFrom(st.pos); };
+  loadVoices();
+  if (synth) { synth.onvoiceschanged = loadVoices; setTimeout(loadVoices, 600); setTimeout(loadVoices, 2000); }
+  fetch('audio/index.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || !j.clips || !Object.keys(j.clips).length) return;
+    REC.map = j.clips; REC.ok = true; loadVoices(); if (chapters.length) build();
+  }).catch(() => {});
+  $('#selVoice').onchange = e => {
+    const v = e.target.value; st.voiceSet = true; localStorage.setItem('missionx-voice2', v);
+    st.voice = voices.find(x => x.name === v) || null; st.mode = v === 'rec' ? 'rec' : st.voice ? 'tts' : 'none';
+    build(); if (st.playing) playFrom(st.pos);
+  };
   $('#selRate').onchange = e => { st.rate = +e.target.value; build(); if (st.playing) playFrom(st.pos); };
 
   function sayAll(sents, onStart) {
@@ -477,7 +502,28 @@ const V = (() => {
       const fin = () => { if (finished) return; finished = true; pend.delete(fin); clearTimeout(wd); BOT.talk(false); SND.duck(false); if (g === st.gen) startUpTo(sents.length - 1); res(); };
       pend.add(fin);
       if (!sents.length) return fin();
-      if (!st.voice || !synth) {
+      if (useRec()) {
+        prefetch(sents);
+        let i = 0;
+        const step = () => {
+          if (finished) return;
+          clearTimeout(wd); AUD.onended = AUD.onerror = null;
+          if (i >= sents.length) return fin();
+          const s = sents[i], k = i++; startUpTo(k); showSub(s);
+          const h = hash(spoken(s)), d = REC.map[h];
+          if (!d) { BOT.talk(false); SND.duck(false); wd = setTimeout(step, est(s)); return; }
+          let moved = false;
+          const nxt = gap => { if (moved || finished) return; moved = true; BOT.talk(false); clearTimeout(wd); wd = setTimeout(step, gap); };
+          AUD.onended = () => nxt(170);
+          AUD.onerror = () => nxt(est(s));
+          wd = setTimeout(() => nxt(0), d * 1000 / st.rate + 5000);
+          AUD.src = 'audio/' + h + '.mp3'; AUD.defaultPlaybackRate = st.rate; AUD.playbackRate = st.rate;
+          BOT.talk(true); SND.duck(true);
+          AUD.play().catch(() => nxt(est(s)));
+        };
+        return step();
+      }
+      if (st.mode !== 'tts' || !st.voice || !synth) {
         let i = 0;
         const step = () => { if (finished) return; if (i >= sents.length) return fin(); startUpTo(i); showSub(sents[i]); wd = setTimeout(step, est(sents[i])); i++; };
         return step();
@@ -564,7 +610,7 @@ const V = (() => {
     } finally { if (g === st.gen) st.instant = false; }
     alive(g);
   }
-  function stopAll() { st.gen++; cancelAll(); st.instant = false; if (synth) synth.cancel(); BOT.talk(false); SND.duck(false); }
+  function stopAll() { st.gen++; cancelAll(); st.instant = false; if (synth) synth.cancel(); AUD.onended = AUD.onerror = null; AUD.pause(); BOT.talk(false); SND.duck(false); }
   async function playFrom(i) {
     stopAll(); const g = st.gen;
     st.pos = i; st.playing = true; st.started = true; $('#endOv').hidden = true; ui();
@@ -575,6 +621,7 @@ const V = (() => {
         if (k !== i && flat[k].bi === 0) await enterChapter(flat[k].ci);
         alive(g);
         st.pos = k; st.t0 = performance.now(); ui();
+        if (flat[k + 1]) prefetch(split(flat[k + 1].b.say));
         await runBeat(flat[k].b, g, false);
       }
       alive(g);
@@ -590,7 +637,7 @@ const V = (() => {
   function pause() { if (!st.playing) return; stopAll(); st.playing = false; ui(); }
   function toggle() { if (!st.started) return start(); st.playing ? pause() : playFrom(st.pos); }
   function seek(i) { i = Math.max(0, Math.min(flat.length - 1, i)); st.playing ? playFrom(i) : showAt(i); }
-  function start(i = 0) { SND.init(); $('#startOv').hidden = true; $('#endOv').hidden = true; playFrom(i); }
+  function start(i = 0) { SND.init(); if (useRec()) { AUD.src = SILENT; AUD.play().catch(() => {}); } $('#startOv').hidden = true; $('#endOv').hidden = true; playFrom(i); }
 
   function ui() {
     player.classList.toggle('playing', st.playing);
@@ -649,6 +696,6 @@ const V = (() => {
   return {
     st, SND, BOT, add, show, out, clear, svg, draw, anim, tween, loop, wait, eq, board, chapter, chapterOut, burst, ring, rectOf, theme, lerp, EASE, BACK, INOUT, soft,
     chapters, init() { build(); showAt(1).then(() => { st.started = false; }); },
-    dev: { get flat() { return flat; }, showAt, playFrom, pause, get total() { return total; } },
+    dev: { get flat() { return flat; }, lines() { const o = [], seen = new Set(); chapters.forEach((c, ci) => c.beats.forEach(b => split(b.say).forEach(s => { const t = spoken(s), h = hash(t); if (!seen.has(h)) { seen.add(h); o.push({ h, c: ci, t }); } }))); return o; }, rec: REC, showAt, playFrom, pause, get total() { return total; } },
   };
 })();

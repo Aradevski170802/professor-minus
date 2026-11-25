@@ -1,0 +1,10 @@
+video/audio/samples/
+video/voices.html
+tools/voice-log.txt
+tools/chunks/
+tools/chunks-samples/
+tools/check/
+tools/check.txt
+tools/check-raw.txt
+tools/transcripts.txt
+tools/sample-*.json
