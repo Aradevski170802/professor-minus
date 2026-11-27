@@ -8,3 +8,5 @@ tools/check.txt
 tools/check-raw.txt
 tools/transcripts.txt
 tools/sample-*.json
+tools/rec38/
+tools/chunks38/

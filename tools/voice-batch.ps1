@@ -15,6 +15,7 @@ param(
   [int]$MaxChars = 1900,
   [int]$MaxRequests = 9,
   [string]$Chapters = '',
+  [string]$CutFile = '',
   [switch]$SplitOnly,
   [switch]$Index
 )
@@ -25,6 +26,10 @@ $utf8 = New-Object Text.UTF8Encoding $false
 $items = [IO.File]::ReadAllText((Resolve-Path $Lines), [Text.Encoding]::UTF8) | ConvertFrom-Json
 New-Item -ItemType Directory -Force $OutDir, $ChunkDir | Out-Null
 function F([double]$x) { return $x.ToString('0.###', $IC) }
+$CutAt = @{}
+if ($CutFile -and (Test-Path $CutFile)) {
+  foreach ($l in (Get-Content $CutFile)) { if ($l -match '^\s*([0-9a-f]{8})\s+([\d\.]+)') { $CutAt[$Matches[1]] = [double]::Parse($Matches[2], $IC) } }
+}
 function Dur($f) { return [double]::Parse((& ffprobe -v error -show_entries format=duration -of csv=p=0 $f).Trim(), $IC) }
 
 # ---------- API ----------
@@ -99,11 +104,21 @@ function Split-Chunk($wav, $group) {
     $S = New-Object double[] $M; $Ee = New-Object double[] $M; $B = New-Object double[] $M
     for ($j = 0; $j -lt $M; $j++) { $S[$j] = $sil[$j].s; $Ee[$j] = $sil[$j].e; $B[$j] = 3.0 * [Math]::Min($sil[$j].d, 1.0) }
     $W = 8.0; $neg = -1e18
+    # pinned cuts: "<hash> <seconds>" lines in -CutFile mean "this sentence ends at the pause nearest to that time"
+    $pin = New-Object int[] ($N - 1)
+    for ($k = 0; $k -lt $N - 1; $k++) {
+      $pin[$k] = -1
+      if ($CutAt.ContainsKey($group[$k].h)) {
+        $t = $CutAt[$group[$k].h]; $bd = 1e9
+        for ($j = 0; $j -lt $M; $j++) { $dd = [Math]::Abs($sil[$j].m - $t); if ($dd -lt $bd) { $bd = $dd; $pin[$k] = $j } }
+      }
+    }
     $best = New-Object 'double[,]' ($N - 1), $M; $from = New-Object 'int[,]' ($N - 1), $M
     for ($k = 0; $k -lt $N - 1; $k++) {
       $lim = 5.0 * $X[$k] + 3.0
       for ($j = 0; $j -lt $M; $j++) {
         $bv = $neg; $ba = -1
+        if ($pin[$k] -ge 0 -and $j -ne $pin[$k]) { $best[$k, $j] = $neg; $from[$k, $j] = -1; continue }
         if ($k -eq 0) {
           $d = $S[$j] - $sp0
           if ($d -gt 0.05 -and $d -lt $lim) { $l = [Math]::Log($d / $X[0]); $bv = -$W * $l * $l }
@@ -143,7 +158,7 @@ function Split-Chunk($wav, $group) {
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg cut failed" }
     $d = Dur $mp3
     $p = 0; if ($i -lt $N - 1) { $p = $cuts[$i].d }
-    $rows += [pscustomobject]@{ h = $group[$i].h; d = $d; rate = $d / $group[$i].t.Length; pause = $p; t = $group[$i].t }
+    $rows += [pscustomobject]@{ h = $group[$i].h; d = $d; rate = $d / $group[$i].t.Length; pause = $p; t = $group[$i].t; a = $a; b = $b }
   }
   $med = ($rows | Sort-Object rate | Select-Object -Index ([int][Math]::Floor($rows.Count / 2))).rate
   $bad = 0
@@ -152,7 +167,7 @@ function Split-Chunk($wav, $group) {
     if ($q -gt 1.5 -or $q -lt 0.6) { $flag = ' <== CHECK length'; $bad++ }
     elseif ($r.pause -gt 0 -and $r.pause -lt 0.3) { $flag = ' <== CHECK short pause'; $bad++ }
     $txt = $r.t; if ($txt.Length -gt 50) { $txt = $txt.Substring(0, 50) }
-    Write-Host ("  {0}  {1,5}s  x{2}  pause {3}s  {4}{5}" -f $r.h, (F $r.d), (F $q), (F $r.pause), $txt, $flag)
+    Write-Host ("  {0}  {1,5}s  x{2}  pause {3}s  [{6}-{7}]  {4}{5}" -f $r.h, (F $r.d), (F $q), (F $r.pause), $txt, $flag, (F $r.a), (F $r.b))
   }
   return $bad
 }
